@@ -532,20 +532,20 @@ async fn connect_websocket(
         .header(UPGRADE, "websocket")
         .header(CONNECTION, "Upgrade");
 
-        // Add custom headers to the request
+    // Add custom headers to the request
     for (key, value) in headers_key_value_map.iter() {
         req_builder = req_builder.header(
             key,
             HeaderValue::from_str(value).map_err(|e| format!("Invalid header value: {}", e))?,
         );
     }
-   
+
     // Unwrap the body
     let req = req_builder
         .body(hyper::Body::empty())
         .map_err(|e| format!("Failed to build request: {}", e))?;
 
-    // Send the HTTP request and await the response to check if upgrade to websocket is possible or not. 
+    // Send the HTTP request and await the response to check if upgrade to WebSocket is possible or not.
     let response = client
         .request(req)
         .await
@@ -572,11 +572,14 @@ async fn connect_websocket(
     // Split the WebSocket stream into read and write halves
     let (mut write, mut read) = ws_stream.split();
 
+    // Create a channel for sending messages to the WebSocket
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
+    // Create a oneshot channel to signal disconnection
     let (disconnect_tx, disconnect_rx) = tokio::sync::oneshot::channel();
     let disconnect_handle = Arc::new(Mutex::new(Some(disconnect_tx)));
 
+    // Insert the connection state into the shared state
     state.connections.lock().await.insert(
         tabid.clone(),
         TabConnection {
@@ -587,12 +590,20 @@ async fn connect_websocket(
 
     let svelte_tabid = tabid.clone();
     let app_handle_clone = app_handle.clone();
+    let disconnect_handle_clone = Arc::clone(&disconnect_handle);
+
     tokio::spawn(async move {
         tokio::select! {
+            // Handle disconnection (triggered when disconnect_rx is received)
             _ = disconnect_rx => {
-                // Handle disconnection here
+                // Log and notify frontend on disconnection
                 println!("WebSocket connection closed for tab: {}", svelte_tabid);
+                app_handle_clone
+                    .emit(&format!("ws_disconnected_{}", svelte_tabid), "Disconnected".to_string())
+                    .unwrap();
             }
+            
+            // Listen for incoming messages from the WebSocket stream
             _ = async {
                 while let Some(message) = read.next().await {
                     if let Ok(msg) = message {
@@ -601,12 +612,21 @@ async fn connect_websocket(
                                 .emit(&format!("ws_message_{}", svelte_tabid), text)
                                 .unwrap();
                         }
+                    } else {
+                        // If there's an error reading from the stream, handle disconnection
+                        println!("WebSocket stream error or closed for tab: {}", svelte_tabid);
+                        let mut lock = disconnect_handle_clone.lock().await;
+                        if let Some(disconnect_tx) = lock.take() {
+                            disconnect_tx.send(()).ok(); // Trigger disconnection notification
+                        }
+                        break; // Exit the loop on disconnection
                     }
                 }
             } => {}
         }
     });
 
+    // Spawn a task to send messages from the frontend to the WebSocket
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             write
@@ -632,6 +652,7 @@ async fn connect_websocket(
 
     Ok(response_json)
 }
+
 
 #[tauri::command]
 async fn send_websocket_message(
