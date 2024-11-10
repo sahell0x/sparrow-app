@@ -597,6 +597,8 @@ async fn connect_websocket(
             // Handle disconnection (triggered when disconnect_rx is received)
             _ = disconnect_rx => {
                 // Log and notify frontend on disconnection
+                println!("hehe disconnection!!!!!");
+
                 println!("WebSocket connection closed for tab: {}", svelte_tabid);
                 app_handle_clone
                     .emit(&format!("ws_disconnected_{}", svelte_tabid), "Disconnected".to_string())
@@ -652,6 +654,7 @@ async fn connect_websocket(
 
     Ok(response_json)
 }
+
 
 
 #[tauri::command]
