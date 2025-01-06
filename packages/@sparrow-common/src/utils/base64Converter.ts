@@ -24,26 +24,43 @@ export class Base64Converter {
     });
   }
 
- /**
+  /**
    * Converts a Base64 string back to a File object.
    * Extracts the MIME type automatically from the string.
    * @param base64 - The Base64 string.
    * @param fileName - The name for the new file.
    * @returns A File object.
    */
- public base64ToFile(base64: string, fileName: string): File {
-  const [metadata, data] = base64.split(',');
-  const mimeType = metadata.match(/data:(.*?);base64/)?.[1] || 'application/octet-stream';
-  const byteString = atob(data);
-  const byteNumbers = new Array(byteString.length);
+  public base64ToFile(base64: string, fileName: string): File {
+    const [metadata, data] = base64.split(",");
+    const mimeType =
+      metadata.match(/data:(.*?);base64/)?.[1] || "application/octet-stream";
+    const byteString = atob(data);
+    const byteNumbers = new Array(byteString.length);
 
-  for (let i = 0; i < byteString.length; i++) {
-    byteNumbers[i] = byteString.charCodeAt(i);
+    for (let i = 0; i < byteString.length; i++) {
+      byteNumbers[i] = byteString.charCodeAt(i);
+    }
+
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mimeType });
+
+    return new File([blob], fileName, { type: mimeType });
   }
 
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: mimeType });
+  /**
+   * Converts binary data to a Base64-encoded URL.
+   * @param _bufferData - Array buffer to be converted.
+   * @returns Complete Url with base64 string that can be used to directoly render image.
+   */
+  public bufferToBase64Converter(_bufferData: any[]): string {
+    const binaryString: string = Array.from(new Uint8Array(_bufferData))
+      .map((byte) => String.fromCharCode(byte))
+      .join("");
 
-  return new File([blob], fileName, { type: mimeType });
-}
+    const base64String: string = btoa(binaryString);
+    const imageUrl: string = `data:image/jpeg;base64,${base64String}`;
+
+    return imageUrl;
+  }
 }
